@@ -1,0 +1,9 @@
+{
+  "name": "claude-learning",
+  "description": "Learning retention system with spaced repetition flashcards, Leitner 7-box + SM-2 adaptive scheduling, learner profiling, and session analysis",
+  "version": "0.1.0",
+  "author": {
+    "name": "magsenche"
+  },
+  "skills": "./skills/"
+}
