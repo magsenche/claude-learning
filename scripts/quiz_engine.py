@@ -19,6 +19,7 @@ Usage:
   python3 quiz_engine.py add-grades <correct> <incorrect> <partial>
   python3 quiz_engine.py read-file <relative-path>   # cat a file from LEARNING_DIR
   python3 quiz_engine.py write-export <relative-path> # write stdin to LEARNING_DIR (exports only)
+  python3 quiz_engine.py sessions-since [YYYY-MM-DD]  # read all sessions after date
 
 Modes: due (default), all, leeches
 
@@ -49,6 +50,7 @@ EASE_PARTIAL_PENALTY = 0.05
 LEECH_THRESHOLD = 4
 MASTERY_BOX_THRESHOLD = 5   # box >= this counts as "mastered" for topic rate
 MASTERED_BOX_THRESHOLD = 6  # box >= this counts in stats.cards_mastered
+RECAP_STREAK_MAX_GAP = 3    # max days between recaps before streak resets
 
 
 def load_json(path):
@@ -413,9 +415,11 @@ def add_cards_from_stdin():
     last_recap = streaks.get("recap_last_date")
     if last_recap:
         diff = (today_date - parse_date(last_recap)).days if parse_date(last_recap) else 999
-        if diff == 1:
+        if diff == 0:
+            pass  # same day, no change
+        elif diff <= RECAP_STREAK_MAX_GAP:
             streaks["recap_current"] = streaks.get("recap_current", 0) + 1
-        elif diff != 0:
+        else:
             streaks["recap_current"] = 1
     else:
         streaks["recap_current"] = 1
@@ -507,6 +511,62 @@ def read_file(rel_path):
     print(target.read_text(encoding="utf-8"), end="")
 
 
+def sessions_since(since_date_str=None):
+    """Read and concatenate all session files with dates strictly after since_date_str.
+
+    If since_date_str is None or empty, returns ALL session files.
+    """
+    sessions_dir = LEARNING_DIR / "sessions"
+    if not sessions_dir.exists():
+        print(json.dumps({"sessions": [], "files_read": [], "date_range": None}))
+        return
+
+    since_date = parse_date(since_date_str) if since_date_str else None
+
+    session_files = []
+    for f in sorted(sessions_dir.glob("*.jsonl")):
+        file_date = parse_date(f.stem)
+        if file_date is None:
+            continue
+        if since_date and file_date <= since_date:
+            continue
+        session_files.append((file_date, f))
+
+    if not session_files:
+        print(json.dumps({"sessions": [], "files_read": [], "date_range": None}))
+        return
+
+    session_files.sort(key=lambda x: x[0])
+
+    all_sessions = []
+    files_read = []
+    for file_date, filepath in session_files:
+        files_read.append(filepath.name)
+        try:
+            with open(filepath, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        all_sessions.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except (OSError, IOError):
+            continue
+
+    date_range = {
+        "start": session_files[0][0].isoformat(),
+        "end": session_files[-1][0].isoformat(),
+    }
+
+    print(json.dumps({
+        "sessions": all_sessions,
+        "files_read": files_read,
+        "date_range": date_range,
+    }, ensure_ascii=False))
+
+
 def write_export(rel_path):
     """Write stdin to a file under LEARNING_DIR/exports/."""
     safe = os.path.normpath(rel_path)
@@ -558,6 +618,9 @@ def main():
             print(json.dumps({"error": "Usage: quiz_engine.py read-file <relative-path>"}))
             sys.exit(1)
         read_file(sys.argv[2])
+    elif cmd == "sessions-since":
+        since_arg = sys.argv[2] if len(sys.argv) > 2 else None
+        sessions_since(since_arg)
     elif cmd == "write-export":
         if len(sys.argv) < 3:
             print(json.dumps({"error": "Usage: quiz_engine.py write-export <relative-path>"}))

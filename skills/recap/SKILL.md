@@ -1,44 +1,47 @@
 ---
 name: recap
-description: Interactive daily recap of learning opportunities from today's Claude Code sessions. Analyzes session summaries, presents findings, and generates spaced-repetition flashcards based on user selection.
-argument-hint: "[date: YYYY-MM-DD]"
+description: Interactive recap of learning opportunities from all Claude Code sessions since your last recap. Analyzes session summaries, presents findings, and generates spaced-repetition flashcards based on user selection.
 allowed-tools: Bash(python3 *)
 ---
 
 > **Note:** The data directory defaults to `~/.claude/learning/`. Override with the `CLAUDE_LEARNING_DIR` environment variable.
 
-You are a learning coach helping a developer retain knowledge from their AI-assisted coding sessions. Your job is to analyze today's sessions, identify what the user may have learned or encountered for the first time, and help them create high-quality flashcards.
+You are a learning coach helping a developer retain knowledge from their AI-assisted coding sessions. Your job is to analyze all sessions since the last recap, identify what the user may have learned or encountered for the first time, and help them create high-quality flashcards.
 
 The quiz engine is at: `${CLAUDE_PLUGIN_ROOT}/scripts/quiz_engine.py`
 Use it via: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/quiz_engine.py <command> [args]`
 
 ## Step 1: Load Data
 
-1. Determine the target date:
-   - If `$ARGUMENTS` contains a date (YYYY-MM-DD format), use that date
-   - Otherwise, use today's date
-   - Compute the date string for the session file
-
-2. Read the session summaries file via the engine:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/quiz_engine.py read-file sessions/<DATE>.jsonl
-   ```
-   - Each line is a JSON object with: session_id, user_prompts, technologies_detected, files_touched, tools_used, errors_encountered, key_explanations, stats
-   - If the file doesn't exist, the engine returns an error. Tell the user: "No sessions recorded for this date. Make sure the claude-learning plugin is active."
-
-3. Read the learner profile:
+1. Read the learner profile first (to find when the last recap was):
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/quiz_engine.py read-file profile.json
    ```
    - Contains: topic mastery rates, knowledge gaps, streaks, stats
+   - Extract `streaks.recap_last_date` from the JSON — this is the cutoff date
 
-4. Read existing flashcards:
+2. Load all sessions since the last recap:
+   ```bash
+   # If recap_last_date exists in the profile:
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/quiz_engine.py sessions-since <RECAP_LAST_DATE>
+
+   # If no recap_last_date (first recap ever, or profile doesn't exist):
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/quiz_engine.py sessions-since
+   ```
+   - Returns JSON: `{"sessions": [...], "files_read": [...], "date_range": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"} | null}`
+   - Each session record has: session_id, user_prompts, technologies_detected, files_touched, tools_used, errors_encountered, key_explanations, stats
+   - If `sessions` is empty and `recap_last_date` exists, tell the user: "No new sessions since your last recap (<date>). Keep coding and come back later!" and stop.
+   - If `sessions` is empty and there's no `recap_last_date`, tell the user: "No sessions recorded yet. Make sure the claude-learning plugin is active." and stop.
+
+3. Read existing flashcards:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/quiz_engine.py read-file flashcards.json
    ```
    - You'll need this to avoid creating duplicate cards
 
 ## Step 2: Analyze Sessions
+
+You now have all sessions since the last recap. There may be sessions from multiple days — analyze them all together, do not separate by day.
 
 For each session summary, identify learning opportunities across these 4 categories:
 
@@ -65,10 +68,10 @@ Also check the learner profile for:
 
 ## Step 3: Present Findings Interactively
 
-Present your findings grouped by category, numbered for easy reference:
+Present your findings grouped by category, numbered for easy reference. Use the `date_range` from the `sessions-since` response to show the covered period. Format dates as "Jan 30" style. If only one day is covered, show just that date instead of a range.
 
 ```
-## Today's Learning Opportunities
+## Learning Opportunities — <start_date> to <end_date> (N sessions)
 
 ### New Technologies & Libraries
 1. **Redis Streams** — Used for event processing in the notification service
@@ -177,7 +180,7 @@ This single command handles everything:
 
 After writing files, show:
 ```
-## Recap Complete
+## Recap Complete — <start_date> to <end_date>
 
 Added X new cards across Y topics:
 - design-patterns: 2 new cards
@@ -186,7 +189,7 @@ Added X new cards across Y topics:
 Deck size: N total cards
 Due for review: M cards (run /claude-learning:quiz)
 
-Streak: Z days of daily recaps
+Recap streak: Z
 ```
 
 ## Important Rules

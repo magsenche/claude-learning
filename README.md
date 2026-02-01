@@ -67,9 +67,9 @@ All data lives in the learning directory (default `~/.claude/learning/`):
 
 ## Skills Reference
 
-### recap `[date]`
+### recap
 
-Analyzes session summaries for the given date (default: today), identifies learning opportunities across four categories (technologies, design patterns, best practices, algorithms), and generates flashcards interactively.
+Analyzes all session summaries since your last recap, identifies learning opportunities across four categories (technologies, design patterns, best practices, algorithms), and generates flashcards interactively. On first run, covers all available sessions.
 
 ### quiz `[topic | number | all | leeches]`
 
